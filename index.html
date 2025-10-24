@@ -31,11 +31,21 @@
             opacity: 0;
         }
         .results-container.visible {
-            max-height: 10000px; /* Large enough for any content */
+            max-height: 20000px; /* Large enough for any content */
             opacity: 1;
         }
         .chart-container canvas {
             max-height: 400px;
+        }
+        /* Highlight styles for results table */
+        .highlight-green {
+            background-color: #d1fae5; /* Tailwind green-100 */
+            font-weight: 600;
+            color: #065f46; /* Tailwind green-800 */
+        }
+        .highlight-yellow {
+            background-color: #fef9c3; /* Tailwind yellow-100 */
+            font-weight: 600;
         }
     </style>
 </head>
@@ -73,13 +83,13 @@
         // --- Global Variables & Helper Functions ---
 
         let allChartData = {};
-        let allAthleteAchievements = {}; // NEW: Store athlete objective results
+        let allAthleteAchievements = {}; // Store athlete objective results
         
         const CHART_YEARS = ['2023', '2024', '2025'];
         const CHART_COMPETITIONS = ['WC1', 'WC2', 'WC3', 'WC4', 'WC5', 'Worlds'];
         const CHART_PHASES = ['Heat 1', 'Heat 2', 'Semifinal', 'Final'];
 
-        // NEW: Define hierarchy for status check
+        // Define the hierarchy of categories
         const CATEGORY_HIERARCHY = {
             'Podium': 5,
             'Podium Ready': 4,
@@ -99,6 +109,8 @@
                 const isHidden = !resultsDiv.classList.toggle('visible');
                 resultsDiv.classList.toggle('hidden', isHidden);
                 button.innerHTML = isHidden ? 'View Results ▼' : 'Hide Results ▲';
+
+                // If we are showing the results, render the charts
                 if (!isHidden) {
                     renderCharts(athleteName, athleteId);
                 }
@@ -112,29 +124,32 @@
             const athleteClassData = allChartData[athleteName];
             if (!athleteClassData) return;
 
+            // Loop over each class (e.g., K1W, C1W) for the athlete
             Object.keys(athleteClassData).forEach(classKey => {
                 const athleteData = athleteClassData[classKey];
                 const labels = [];
                 const rawData = [];
                 const totalData = [];
                 
+                // Build the chronological data
                 CHART_YEARS.forEach(year => {
                     CHART_COMPETITIONS.forEach(comp => {
                         CHART_PHASES.forEach(phase => {
                             const label = `${year} - ${comp} - ${phase}`;
                             labels.push(label);
+                            // Check if we have data for this specific point
                             if (athleteData[year] && athleteData[year][comp] && athleteData[year][comp][phase]) {
                                 rawData.push(athleteData[year][comp][phase].raw);
                                 totalData.push(athleteData[year][comp][phase].total);
                             } else {
-                                rawData.push(null);
-                                totalData.push(null);
+                                rawData.push(null); // Add null to create gaps
+                                totalData.push(null); // *** FIX ***: Also add null to totalData
                             }
                         });
                     });
                 });
 
-                const safeClassKey = classKey.replace(/[^a-zA-Z0-9-]/g, '');
+                const safeClassKey = createSafeId(classKey);
                 const rawCanvasId = `raw-chart-${athleteId}-${safeClassKey}`;
                 const totalCanvasId = `total-chart-${athleteId}-${safeClassKey}`;
                 
@@ -146,7 +161,8 @@
                     return;
                 }
                 
-                if (!rawCanvas.chartInstance) {
+                // Render "Raw % Behind" Chart
+                if (!rawCanvas.chartInstance) { 
                     const rawCtx = rawCanvas.getContext('2d');
                     rawCanvas.chartInstance = new Chart(rawCtx, {
                         type: 'line',
@@ -170,13 +186,13 @@
                                 tooltip: { mode: 'index', intersect: false, callbacks: { label: (context) => `Raw %: ${context.parsed.y.toFixed(2)} %` } }
                             },
                             scales: {
-                                y: { title: { display: true, text: '% Behind' }, min: 95, max: 125 },
+                                y: { title: { display: true, text: '% Behind' }, min: 95, max: 120 }, // *** FIX ***: Set scale 95-120
                                 x: {
                                     ticks: {
                                         callback: function(value, index, ticks) {
                                             const label = this.getLabelForValue(value);
                                             if (index === 0 || (index > 0 && label.substring(0, 4) !== this.getLabelForValue(ticks[index - 1].value).substring(0, 4))) return label.substring(0, 4); 
-                                            return ''; 
+                                            return '';
                                         },
                                         autoSkip: false, maxRotation: 0, minRotation: 0, font: { weight: 'bold' }
                                     }
@@ -186,7 +202,8 @@
                     });
                 }
 
-                if (!totalCanvas.chartInstance) {
+                // Render "Total % Behind" Chart
+                if (!totalCanvas.chartInstance) { 
                     const totalCtx = totalCanvas.getContext('2d');
                     totalCanvas.chartInstance = new Chart(totalCtx, {
                         type: 'line',
@@ -210,7 +227,7 @@
                                 tooltip: { mode: 'index', intersect: false, callbacks: { label: (context) => `Total %: ${context.parsed.y.toFixed(2)} %` } }
                             },
                             scales: {
-                                y: { title: { display: true, text: '% Behind' }, min: 95, max: 125 },
+                                y: { title: { display: true, text: '% Behind' }, min: 95, max: 120 }, // *** FIX ***: Set scale 95-120
                                 x: {
                                     ticks: {
                                         callback: function(value, index, ticks) {
@@ -233,7 +250,24 @@
          */
         function normalizeName(name) {
             if (!name) return '';
-            return name.trim().toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+            return name
+                .trim()
+                .toLowerCase()
+                .split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+        }
+        
+        /**
+         * Creates a safe ID for HTML elements.
+         */
+        function createSafeId(name) {
+            if (!name) return '';
+            return name
+                .toString()
+                .toLowerCase()
+                .replace(/\s+/g, '-')         // Replace spaces with -
+                .replace(/[^a-z0-9-]/g, ''); // Remove all non-alphanumeric chars except dash
         }
 
         /**
@@ -242,6 +276,7 @@
         function normalizeCompetition(compName) {
             if (!compName) return '';
             const lowerComp = compName.toLowerCase();
+            
             if (lowerComp.includes("world cup 1")) return "WC1";
             if (lowerComp.includes("world cup 2")) return "WC2";
             if (lowerComp.includes("world cup 3")) return "WC3";
@@ -250,6 +285,7 @@
             if (lowerComp.includes("u23 world")) return "U23 Worlds";
             if (lowerComp.includes("junior world")) return "JNR Worlds";
             if (lowerComp.includes("world championships")) return "Worlds";
+            
             return compName.split(' ')[0];
         }
         
@@ -259,10 +295,12 @@
         function normalizePhase(phaseName) {
             if (!phaseName) return '';
             const lowerPhase = phaseName.toLowerCase().trim();
+            
             if (lowerPhase.includes("heat 1") || lowerPhase === "heats") return "Heat 1";
             if (lowerPhase.includes("heat 2")) return "Heat 2";
             if (lowerPhase.includes("semi")) return "Semifinal";
             if (lowerPhase.includes("final")) return "Final";
+            
             return null;
         }
 
@@ -271,23 +309,35 @@
          */
         function getCategoryColor(category) {
             const lowerCategory = category.toLowerCase().trim();
-            if (lowerCategory.includes('not categorised')) return 'bg-red-300 text-red-900 border border-red-400';
-            if (lowerCategory.includes('emerging')) return 'bg-orange-300 text-orange-900 border border-orange-400';
-            if (lowerCategory.includes('podium ready')) return 'bg-blue-300 text-blue-900 border border-blue-400';
-            if (lowerCategory.includes('podium potential')) return 'bg-purple-300 text-purple-900 border border-purple-400';
-            if (lowerCategory.includes('podium')) return 'bg-yellow-300 text-yellow-900 border border-yellow-400';
-            if (lowerCategory.includes('developing')) return 'bg-green-300 text-green-900 border border-green-400';
+            if (lowerCategory.includes('not categorised')) {
+                return 'bg-red-300 text-red-900 border border-red-400';
+            }
+            if (lowerCategory.includes('emerging')) {
+                return 'bg-orange-300 text-orange-900 border border-orange-400';
+            }
+            if (lowerCategory.includes('podium ready')) {
+                return 'bg-blue-300 text-blue-900 border border-blue-400';
+            }
+            if (lowerCategory.includes('podium potential')) {
+                return 'bg-purple-300 text-purple-900 border border-purple-400';
+            }
+            if (lowerCategory.includes('podium')) {
+                return 'bg-yellow-300 text-yellow-900 border border-yellow-400';
+            }
+            if (lowerCategory.includes('developing')) {
+                return 'bg-green-300 text-green-900 border border-green-400';
+            }
             return 'bg-gray-200 text-gray-800 border border-gray-300';
         }
 
         /**
-         * NEW: Gets a color for the status tile.
+         * Gets a color for the status tile.
          */
         function getStatusColor(status) {
             if (status.includes('Improved')) return 'bg-green-100 text-green-800 border-green-300';
             if (status.includes('Maintained')) return 'bg-blue-100 text-blue-800 border-blue-300';
             if (status.includes('Did Not Maintain')) return 'bg-red-100 text-red-800 border-red-300';
-            if (status.includes('Podium')) return 'bg-yellow-100 text-yellow-800 border-yellow-300'; // Special Podium case
+            if (status.includes('Podium')) return 'bg-yellow-100 text-yellow-800 border-yellow-300';
             return 'bg-gray-100 text-gray-800 border-gray-300';
         }
         
@@ -296,67 +346,109 @@
          */
         function findColumnIndex(headers, colName) {
             const cleanName = colName.toLowerCase().replace(/[^a-z0-9]/g, '');
-            return headers.findIndex(h => h.toLowerCase().replace(/[^a-z0-9]/g, '').includes(cleanName));
+            return headers.findIndex(h => {
+                const cleanH = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+                return cleanH.includes(cleanName);
+            });
         }
 
         /**
-         * NEW: Checks athlete's 2025 results against the objective criteria.
+         * Finds the best result (lowest rank) for a given class.
+         */
+        function findBestResult(classResults) {
+            let bestRank = Infinity;
+            let bestComp = null;
+            if (!classResults) return null;
+            
+            Object.keys(classResults).forEach(comp => {
+                const rank = parseInt(classResults[comp], 10);
+                if (rank && rank < bestRank) {
+                    bestRank = rank;
+                    bestComp = comp;
+                }
+            });
+            return bestComp ? { comp: bestComp, rank: bestRank } : null;
+        }
+
+
+        /**
+         * Checks athlete's 2025 results against the objective criteria.
          */
         function checkAthleteStatus(name, currentCategory, achievements) {
             const currentLevel = CATEGORY_HIERARCHY[currentCategory] || 0;
-            
-            // Special rule for Podium
-            if (currentLevel === CATEGORY_HIERARCHY['Podium']) {
-                return { status: 'Podium: Maintained ✅', achievedLevel: currentLevel, achievedCategory: 'Podium' };
-            }
-
             let achievedLevel = 0;
             let achievedCategory = 'Not Categorised';
+            let keyAchievements = []; 
+
+            if (currentLevel === CATEGORY_HIERARCHY['Podium']) {
+                return { 
+                    status: 'Podium: Maintained ✅', 
+                    achievedLevel: currentLevel, 
+                    achievedCategory: 'Podium',
+                    keyAchievements: [],
+                    statusType: 'maintained' 
+                };
+            }
 
             // Check criteria from highest to lowest
-            if (achievements.seniorWorldsRank <= 3) {
+            if (achievements.seniorWorldsRank.rank <= 3) {
                 achievedLevel = CATEGORY_HIERARCHY['Podium'];
                 achievedCategory = 'Podium';
-            } else if (achievements.seniorWorldsRank <= 12) {
+                keyAchievements.push(achievements.seniorWorldsRank);
+            } else if (achievements.seniorWorldsRank.rank <= 12) {
                 achievedLevel = CATEGORY_HIERARCHY['Podium Ready'];
                 achievedCategory = 'Podium Ready';
-            } else if (achievements.seniorWorldsRank <= 20 || achievements.worldCupTop20s >= 2 || achievements.juniorU23WorldsRank <= 10) {
+                keyAchievements.push(achievements.seniorWorldsRank);
+            } else if (achievements.seniorWorldsRank.rank <= 20 || achievements.worldCupTop20s.length >= 2 || achievements.juniorU23WorldsRank.rank <= 10) {
                 achievedLevel = CATEGORY_HIERARCHY['Podium Potential'];
                 achievedCategory = 'Podium Potential';
-            } else if (achievements.worldCupSemiFinals >= 1 || achievements.juniorU23WorldsRank <= 20) {
+                if (achievements.seniorWorldsRank.rank <= 20) keyAchievements.push(achievements.seniorWorldsRank);
+                if (achievements.worldCupTop20s.length >= 2) keyAchievements = keyAchievements.concat(achievements.worldCupTop20s);
+                if (achievements.juniorU23WorldsRank.rank <= 10) keyAchievements.push(achievements.juniorU23WorldsRank);
+            } else if (achievements.worldCupSemiFinals.length >= 1 || achievements.juniorU23WorldsRank.rank <= 20) {
                 achievedLevel = CATEGORY_HIERARCHY['Developing'];
                 achievedCategory = 'Developing';
-            } else if (achievements.juniorU23SemiFinals >= 1) {
+                if (achievements.worldCupSemiFinals.length >= 1) keyAchievements = keyAchievements.concat(achievements.worldCupSemiFinals);
+                if (achievements.juniorU23WorldsRank.rank <= 20) keyAchievements.push(achievements.juniorU23WorldsRank);
+            } else if (achievements.juniorU23SemiFinals.length >= 1) {
                 achievedLevel = CATEGORY_HIERARCHY['Emerging'];
                 achievedCategory = 'Emerging';
+                keyAchievements = keyAchievements.concat(achievements.juniorU23SemiFinals);
             }
 
-            // Compare achieved level to current level (but only if higher)
-            // "I would like an athlete to only be compared to their current categorisation or higher"
             let status = '';
-            if (achievedLevel > currentLevel) {
-                status = `Improved to: ${achievedCategory} ⬆️`;
-            } else if (achievedLevel === currentLevel && achievedLevel > 0) {
-                status = `Maintained: ${achievedCategory} ✅`;
-            } else if (achievedLevel < currentLevel) {
-                status = `Did Not Maintain: ${currentCategory} ❌`;
-            } else {
-                status = 'No Standard Met ❌';
-            }
+            let statusType = 'none';
             
-            // For "Not Categorised" athletes, always show what they achieved
-            if (currentLevel === 0 && achievedLevel > 0) {
-                 status = `Achieved Standard: ${achievedCategory} ⬆️`;
+            if (currentLevel > 0) {
+                if (achievedLevel >= currentLevel) {
+                    status = `Maintained: ${currentCategory} ✅`;
+                    statusType = 'maintained';
+                    if (achievedLevel > currentLevel) {
+                         status = `Improved to: ${achievedCategory} ⬆️`;
+                         statusType = 'improved';
+                    }
+                } else {
+                    status = `Did Not Maintain: ${currentCategory} ❌`;
+                    statusType = 'failed';
+                }
+            } else { 
+                if (achievedLevel > 0) {
+                    status = `Achieved Standard: ${achievedCategory} ⬆️`;
+                    statusType = 'improved';
+                } else {
+                    status = 'No Standard Met ❌';
+                    statusType = 'failed';
+                }
             }
 
-            return { status, achievedLevel, achievedCategory };
+            return { status, achievedLevel, achievedCategory, keyAchievements, statusType };
         }
 
         /**
          * Creates the complete HTML element for a single athlete.
          */
         function createAthleteElement(name, category, athleteResults, sortedCompetitions, athleteChartData, athleteStatus) {
-            const athleteId = name.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase();
+            const athleteId = createSafeId(name);
             const categoryColor = getCategoryColor(category);
             const hasResults = athleteResults && Object.keys(athleteResults).length > 0;
             const hasChartData = athleteChartData && Object.keys(athleteChartData).length > 0;
@@ -367,13 +459,12 @@
             let resultsHtml = '';
             let chartsHtml = '';
             
-            // --- Build Charts HTML ---
+            // --- Build Charts HTML (one pair per class) ---
             if (hasChartData) {
                 const classChartHtmls = Object.keys(athleteChartData).sort().map(classKey => {
-                    const safeClassKey = classKey.replace(/[^a-zA-Z0-9-]/g, '');
+                    const safeClassKey = createSafeId(classKey);
                     const rawCanvasId = `raw-chart-${athleteId}-${safeClassKey}`;
                     const totalCanvasId = `total-chart-${athleteId}-${safeClassKey}`;
-                    
                     return `
                         <div class="mt-6 pt-6 border-t border-dashed border-gray-300">
                              <h5 class="text-base font-semibold text-gray-700 mb-4">${classKey} Performance Trend</h5>
@@ -383,7 +474,6 @@
                             </div>
                         </div>`;
                 }).join('');
-
                 chartsHtml = `
                     <div class="mt-8 pt-6 border-t border-gray-300 chart-container">
                         <h4 class="text-lg font-semibold text-gray-800 mb-4">
@@ -395,17 +485,46 @@
 
             // --- Build Results Table HTML ---
             if (hasResults) {
+                const achievementsToHighlight = {}; 
+                if (athleteStatus.statusType === 'improved' || athleteStatus.statusType === 'maintained') {
+                    athleteStatus.keyAchievements.forEach(ach => {
+                        if (!achievementsToHighlight[ach.class]) {
+                            achievementsToHighlight[ach.class] = [];
+                        }
+                        achievementsToHighlight[ach.class].push(ach.comp);
+                    });
+                }
+
                 const classRows = Object.keys(athleteResults).sort().map(className => {
                     const results = athleteResults[className];
+                    
+                    let bestResultForClass = null;
+                    if (athleteStatus.statusType === 'failed') {
+                        bestResultForClass = findBestResult(results);
+                    }
+                    
+                    const classAchievements = achievementsToHighlight[className] || [];
+
                     return `
                         <tr>
                             <td class="px-3 py-3 whitespace-nowrap text-sm font-semibold text-gray-800">${className}</td>
-                            ${sortedCompetitions.map(comp => `<td class="px-3 py-3 whitespace-nowrap text-sm text-gray-600 text-center">${results[comp] || '-'}</td>`).join('')}
+                            ${sortedCompetitions.map(comp => {
+                                const rank = results[comp] || '-';
+                                let highlightClass = '';
+                                
+                                if (classAchievements.includes(comp)) {
+                                    highlightClass = 'highlight-green';
+                                }
+                                else if (bestResultForClass && bestResultForClass.comp === comp) {
+                                    highlightClass = 'highlight-yellow';
+                                }
+
+                                return `<td class="px-3 py-3 whitespace-nowrap text-sm text-gray-600 text-center ${highlightClass}">${rank}</td>`;
+                            }).join('')}
                         </tr>`;
                 }).join('');
 
                 resultsHtml = `
-                    <!-- Results Table -->
                     <h4 class="text-lg font-semibold text-gray-800 mb-4 mt-6">
                         2025 Competition Results
                     </h4>
@@ -424,7 +543,7 @@
                     </div>`;
             }
 
-            // --- NEW: Build Status Tile ---
+            // --- Build Status Tile ---
             const statusColor = getStatusColor(athleteStatus.status);
             const statusHtml = `
                 <div class="p-4 rounded-lg border ${statusColor}">
@@ -437,8 +556,8 @@
             const collapsibleHtml = `
                 <div id="results-${athleteId}" class="hidden results-container mt-4 pt-4 border-t border-gray-200">
                     ${statusHtml}
-                    ${resultsHtml} <!-- Contains results table -->
-                    ${chartsHtml} <!-- Contains all charts -->
+                    ${resultsHtml} 
+                    ${chartsHtml}
                 </div>
             `;
 
@@ -487,11 +606,11 @@
         function parseCsv(text) {
             const lines = text.trim().split('\n');
             if (lines.length < 2) return [];
-            const headers = lines[0].split(',').map(h => h.trim());
+            const headers = lines[0].split(',').map(h => h.trim().replace(/\r/g, ''));
             return lines.slice(1).map(line => {
-                const values = line.split(',');
+                const values = line.split(','); 
                 return headers.reduce((obj, header, index) => {
-                    obj[header] = values[index] ? values[index].trim() : '';
+                    obj[header] = values[index] ? values[index].trim().replace(/\r/g, '') : '';
                     return obj;
                 }, {});
             });
@@ -501,19 +620,16 @@
          * Processes the main categorisation file.
          */
         function processCategorisation(data, categorizedNames) {
-            const athleteList = []; 
+            const athleteList = [];
             const headers = data[0] ? Object.keys(data[0]) : [];
             const nameIdx = findColumnIndex(headers, "Athlete Name");
             const catIdx = findColumnIndex(headers, "Categorisation");
-
             if (nameIdx === -1 || catIdx === -1) {
-                console.error("Could not find 'Athlete Name' or 'Categorisation' columns.");
+                console.error("Could not find 'Athlete Name' or 'Categorisation' columns in categorisation file.");
                 return { athleteList, categorizedNames };
             }
-            
             const nameHeader = headers[nameIdx];
             const catHeader = headers[catIdx];
-
             data.forEach(row => {
                 const name = normalizeName(row[nameHeader]);
                 const category = row[catHeader] || 'Not Categorised';
@@ -526,18 +642,19 @@
         }
 
         /**
-         * NEW: Pre-processes all results to find ranks and semi-finals for the status check.
+         * Pre-processes all results to find ranks and semi-finals for the status check.
          */
         function processResultsForAchievements(data) {
             const headers = data[0] ? Object.keys(data[0]) : [];
             const nameIdx = findColumnIndex(headers, "Athlete Name");
             const nationIdx = findColumnIndex(headers, "Nation");
             const yearIdx = findColumnIndex(headers, "Year");
+            const classIdx = findColumnIndex(headers, "Class");
             const compIdx = findColumnIndex(headers, "Competition");
             const rankIdx = findColumnIndex(headers, "Overall Rank");
             const phaseIdx = findColumnIndex(headers, "Phase");
 
-            if (nameIdx === -1 || nationIdx === -1 || yearIdx === -1 || compIdx === -1 || rankIdx === -1 || phaseIdx === -1) {
+            if (nameIdx === -1 || nationIdx === -1 || yearIdx === -1 || compIdx === -1 || rankIdx === -1 || phaseIdx === -1 || classIdx === -1) {
                 console.error("Missing required columns in race results file for achievements.");
                 return;
             }
@@ -545,50 +662,56 @@
             const nameHeader = headers[nameIdx];
             const nationHeader = headers[nationIdx];
             const yearHeader = headers[yearIdx];
+            const classHeader = headers[classIdx];
             const compHeader = headers[compIdx];
             const rankHeader = headers[rankIdx];
             const phaseHeader = headers[phaseIdx];
 
             data.forEach(row => {
                 const year = row[yearHeader];
-                if (year !== '2025') return; // Only 2025 results count
+                if (year !== '2025') return; 
 
                 const name = normalizeName(row[nameHeader]);
                 const nation = row[nationHeader];
                 if (nation !== 'AUS' || !name) return;
                 
-                // Initialize athlete if not present
                 if (!allAthleteAchievements[name]) {
                     allAthleteAchievements[name] = {
-                        seniorWorldsRank: Infinity,
-                        juniorU23WorldsRank: Infinity,
-                        worldCupTop20s: 0,
-                        worldCupSemiFinals: 0,
-                        juniorU23SemiFinals: 0
+                        seniorWorldsRank: { rank: Infinity, class: null, comp: null },
+                        juniorU23WorldsRank: { rank: Infinity, class: null, comp: null },
+                        worldCupTop20s: [],
+                        worldCupSemiFinals: [],
+                        juniorU23SemiFinals: []
                     };
                 }
 
                 const comp = normalizeCompetition(row[compHeader]);
                 const rank = parseInt(row[rankHeader], 10);
                 const phase = normalizePhase(row[phaseHeader]);
+                const className = row[classHeader];
+                const ach = { rank, class: className, comp };
                 
-                if (comp === 'Worlds' && rank && rank < allAthleteAchievements[name].seniorWorldsRank) {
-                    allAthleteAchievements[name].seniorWorldsRank = rank;
+                if (comp === 'Worlds' && rank && rank < allAthleteAchievements[name].seniorWorldsRank.rank) {
+                    allAthleteAchievements[name].seniorWorldsRank = ach;
                 }
-                else if ((comp === 'U23 Worlds' || comp === 'JNR Worlds') && rank && rank < allAthleteAchievements[name].juniorU23WorldsRank) {
-                    allAthleteAchievements[name].juniorU23WorldsRank = rank;
+                else if ((comp === 'U23 Worlds' || comp === 'JNR Worlds') && rank && rank < allAthleteAchievements[name].juniorU23WorldsRank.rank) {
+                    allAthleteAchievements[name].juniorU23WorldsRank = ach;
                 }
                 else if (comp.startsWith('WC')) {
                     if (rank && rank <= 20) {
-                        allAthleteAchievements[name].worldCupTop20s++;
+                        allAthleteAchievements[name].worldCupTop20s.push(ach);
                     }
                     if (phase === 'Semifinal' || phase === 'Final') {
-                        allAthleteAchievements[name].worldCupSemiFinals++;
+                        if (!allAthleteAchievements[name].worldCupSemiFinals.find(a => a.class === className && a.comp === comp)) {
+                            allAthleteAchievements[name].worldCupSemiFinals.push(ach);
+                        }
                     }
                 }
                 
                 if ((comp === 'U23 Worlds' || comp === 'JNR Worlds') && (phase === 'Semifinal' || phase === 'Final')) {
-                    allAthleteAchievements[name].juniorU23SemiFinals++;
+                     if (!allAthleteAchievements[name].juniorU23SemiFinals.find(a => a.class === className && a.comp === comp)) {
+                        allAthleteAchievements[name].juniorU23SemiFinals.push(ach);
+                    }
                 }
             });
         }
@@ -619,7 +742,7 @@
 
             data.forEach(row => {
                 const year = row[yearHeader];
-                if (year === '2025') {
+                if (year === '2025') { 
                     const name = normalizeName(row[nameHeader]);
                     const nation = row[nationHeader];
                     const className = row[classHeader];
@@ -629,8 +752,10 @@
                     if (nation === 'AUS' && name && className && competition) {
                         if (!allResults[name]) allResults[name] = {};
                         if (!allResults[name][className]) allResults[name][className] = {};
-                        allResults[name][className][competition] = rank;
-                        allCompetitions.add(competition);
+                        if(rank) {
+                            allResults[name][className][competition] = rank;
+                            allCompetitions.add(competition);
+                        }
                     }
                 }
             });
@@ -728,9 +853,11 @@
             const catFile = `data/Categorisation/athlete_categorisation.csv`;
             const seniorFile = `data/competition_results/competition_results.csv`; 
             const juniorFile = `data/JNR_U23/slalom_results_with_overall_rank.csv`;
+
             const catUrl = `https://raw.githubusercontent.com/${username}/${repo}/${branch}/${catFile}`;
             const seniorUrl = `https://raw.githubusercontent.com/${username}/${repo}/${branch}/${seniorFile}`;
             const juniorUrl = `https://raw.githubusercontent.com/${username}/${repo}/${branch}/${juniorFile}`;
+
             fetchAllData([catUrl, seniorUrl, juniorUrl]);
         });
 
@@ -749,62 +876,59 @@
                 const juniorData = parseCsv(juniorCsv);
                 
                 let categorizedNames = new Set();
-                let allResults = {};
+                let allResults = {}; 
                 let allCompetitions = new Set();
                 
-                // 1. Process categorisation list
                 const { athleteList } = processCategorisation(catData, categorizedNames);
 
-                // 2. NEW: Process all results for 2025 achievements (for status tile)
-                // (populates global allAthleteAchievements)
                 processResultsForAchievements(seniorData);
                 processResultsForAchievements(juniorData);
 
-                // 3. Process race results for 2025 tables
                 processRaceResultsForTable(seniorData, allResults, allCompetitions);
                 processRaceResultsForTable(juniorData, allResults, allCompetitions);
                 
-                // 4. Process senior results for 2023-2025 charts
                 processSeniorResultsForCharts(seniorData);
                 
-                // 5. Find uncategorised athletes
                 const uncategorisedSenior = findUncategorisedAthletes(seniorData, categorizedNames);
                 const uncategorisedJunior = findUncategorisedAthletes(juniorData, categorizedNames);
                 const uncategorisedList = { ...uncategorisedSenior, ...uncategorisedJunior };
 
                 // --- Render HTML ---
                 loadingDiv.classList.add('hidden');
-                outputList.innerHTML = '';
+                outputList.innerHTML = ''; 
 
                 const sortedCompetitions = [...allCompetitions].sort((a, b) => {
                     const wcA = a.startsWith('WC'), wcB = b.startsWith('WC');
                     if (wcA && !wcB) return -1; if (!wcA && wcB) return 1;
-                    if (wcA && wcB) return a.localeCompare(b);
+                    if (wcA && wcB) return a.localeCompare(b); 
+                    
                     const worldsA = a === 'Worlds', worldsB = b === 'Worlds';
                     if (worldsA && !worldsB) return -1; if (!worldsA && worldsB) return 1;
+                    
                     const u23A = a === 'U23 Worlds', u23B = b === 'U23 Worlds';
                     if (u23A && !u23B) return -1; if (!u23A && u23B) return 1;
+
                     const jnrA = a === 'JNR Worlds', jnrB = b === 'JNR Worlds';
                     if (jnrA && !jnrB) return -1; if (!jnrA && jnrB) return 1;
+                    
                     return a.localeCompare(b);
                 });
                 
-                // 1. Render categorized athletes (in original CSV order)
+                const defaultAchievements = {
+                    seniorWorldsRank: { rank: Infinity, class: null, comp: null },
+                    juniorU23WorldsRank: { rank: Infinity, class: null, comp: null },
+                    worldCupTop20s: [], worldCupSemiFinals: [], juniorU23SemiFinals: []
+                };
+                
                 athleteList.forEach(athlete => {
                     const name = athlete.name;
                     const category = athlete.category;
-                    // Get their achievements, or a default empty object
-                    const achievements = allAthleteAchievements[name] || {
-                        seniorWorldsRank: Infinity, juniorU23WorldsRank: Infinity,
-                        worldCupTop20s: 0, worldCupSemiFinals: 0, juniorU23SemiFinals: 0
-                    };
-                    // Check their status
+                    const achievements = allAthleteAchievements[name] || { ...defaultAchievements };
                     const athleteStatus = checkAthleteStatus(name, category, achievements);
                     const athleteEl = createAthleteElement(name, category, allResults[name], sortedCompetitions, allChartData[name], athleteStatus);
                     outputList.appendChild(athleteEl);
                 });
 
-                // 2. Render uncategorised athletes
                 const sortedUncategorisedNames = Object.keys(uncategorisedList).sort();
                 if (sortedUncategorisedNames.length > 0) {
                     const separator = document.createElement('div');
@@ -814,10 +938,7 @@
                     
                     sortedUncategorisedNames.forEach(name => {
                         const category = uncategorisedList[name];
-                        const achievements = allAthleteAchievements[name] || {
-                            seniorWorldsRank: Infinity, juniorU23WorldsRank: Infinity,
-                            worldCupTop20s: 0, worldCupSemiFinals: 0, juniorU23SemiFinals: 0
-                        };
+                        const achievements = allAthleteAchievements[name] || { ...defaultAchievements };
                         const athleteStatus = checkAthleteStatus(name, category, achievements);
                         const athleteEl = createAthleteElement(name, category, allResults[name], sortedCompetitions, allChartData[name], athleteStatus);
                         outputList.appendChild(athleteEl);
